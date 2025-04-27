@@ -4,10 +4,11 @@ import logging
 import sys
 import time
 from enum import Enum, IntEnum
+from typing import Optional
 
 from asyncfix import FMsg, FTag
 from asyncfix.codec import Codec
-from asyncfix.errors import FIXConnectionError
+from asyncfix.errors import FIXConnectionError, FIXMessageError
 from asyncfix.journaler import Journaler
 from asyncfix.message import FIXMessage, MessageDirection
 from asyncfix.protocol import FIXProtocolBase
@@ -133,7 +134,7 @@ class AsyncFIXConnection:
         if not logger:
             self.log: logging.Logger = logging.getLogger()
         else:
-            self.log: logging.Logger = logger
+            self.log = logger
 
         # Private attributes
         self._connection_state: ConnectionState = (
@@ -151,8 +152,8 @@ class AsyncFIXConnection:
         self._message_last_time = 0.0
         self._max_seq_num_resend = 0
         self._test_req_id = None
-        self._socket_reader: asyncio.StreamReader = None
-        self._socket_writer: asyncio.StreamWriter = None
+        self._socket_reader: Optional[asyncio.StreamReader] = None
+        self._socket_writer: Optional[asyncio.StreamWriter] = None
         self._host = host
         self._port = int(port)
         self._aio_task_socket_read = None
@@ -188,7 +189,7 @@ class AsyncFIXConnection:
     async def disconnect(
         self,
         disconn_state: ConnectionState,
-        logout_message: str = None,
+        logout_message: Optional[str] = None,
     ):
         """Disconnect session and closes the socket.
 
@@ -467,35 +468,34 @@ class AsyncFIXConnection:
             self._connection_was_active = True
         await self.on_state_change(connection_state)
 
-    def _validate_integrity(self, msg: FIXMessage) -> bool:
+    def _validate_integrity(self, msg: FIXMessage) -> None:
         """Validates incoming message critical integrity.
 
         Args:
             msg: incoming message
 
-        Returns:
-            None - if no error
-            True - if critical error (no Logout() message has to be sent)
-            "err msg" - Logout(58="err msg") should be sent
+        Raises:
+            FIXMessageError if critical error - no LOGOUT message has to be sent
+            FIXMessageError(err_msg) otherwise - LOGOUT message with 58=err_msg should be sent
         """
         if msg[FTag.BeginString] != self.protocol.beginstring:
-            return (
+            raise FIXMessageError(
                 "Protocol BeginString(8) mismatch, expected"
                 f" {self.protocol.beginstring}, got {msg[FTag.BeginString]}"
             )
         if FTag.SenderCompID not in msg or FTag.TargetCompID not in msg:
             # this will drop connection without a message
-            return True
+            raise FIXMessageError
 
         if not self._session.validate_comp_ids(
             msg[FTag.SenderCompID], msg[FTag.TargetCompID]
         ):
             # Sender/Target are reversed here
-            return "TargetCompID / SenderCompID mismatch"
+            raise FIXMessageError("TargetCompID / SenderCompID mismatch")
 
         # TODO: validate SendingTime ~~ within 2x heartbeat_period
         if FTag.MsgSeqNum not in msg:
-            return "MsgSeqNum(34) tag is missing"
+            raise FIXMessageError("MsgSeqNum(34) tag is missing")
 
         msg_seq_num = int(msg[FTag.MsgSeqNum])
         if msg_seq_num < self._session.next_num_in:
@@ -506,13 +506,10 @@ class AsyncFIXConnection:
                 _is_err = False
 
             if _is_err:
-                return (
+                raise FIXMessageError (
                     f"MsgSeqNum is too low, expected {self._session.next_num_in}, got"
                     f" {msg_seq_num}"
                 )
-
-        # All good
-        return None
 
     async def _process_logon(self, logon_msg: FIXMessage):
         """Processes Logon(35=A) message."""
@@ -621,6 +618,8 @@ class AsyncFIXConnection:
 
         for enc_msg in journal_replay_msgs:
             replay_msg, _, _ = self._codec.decode(enc_msg, silent=False)
+            if replay_msg is None:
+                continue
             msg_seq_num = int(replay_msg[FTag.MsgSeqNum])
 
             is_sess_msg = replay_msg[FTag.MsgType] in noreply_msgs
@@ -776,12 +775,13 @@ class AsyncFIXConnection:
             f" ({self._connection_state.name}) {repr(msg.msg_type)}\n\t {msg}\n"
         )
 
-        err_msg = self._validate_integrity(msg)
-        if err_msg:
+        try:
+            self._validate_integrity(msg)
+        except FIXMessageError as exc:
             # Some mandatory tags are missing or corrupt message
             await self.disconnect(
                 ConnectionState.DISCONNECTED_BROKEN_CONN,
-                logout_message=err_msg if isinstance(err_msg, str) else None,
+                logout_message=str(exc) if str(exc) else None,
             )
             return
         is_valid_msg_num = False
