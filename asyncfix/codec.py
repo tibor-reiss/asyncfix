@@ -1,6 +1,7 @@
 """FIX Message encoding / decoding module."""
+
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from asyncfix import FMsg, FTag
 from asyncfix.errors import EncodingError
@@ -8,9 +9,17 @@ from asyncfix.message import FIXContainer, FIXMessage, RepeatingTagError
 from asyncfix.protocol import FIXProtocolBase
 from asyncfix.session import FIXSession
 
+MINIMUM_MSG_LENGTH = 3
+TOKENS_LENGTH = 2
+
 
 class _RepeatingGroupContext(FIXContainer):
-    def __init__(self, tag, repeating_group_tags, parent):
+    def __init__(
+        self,
+        tag: str,
+        repeating_group_tags: list[str],
+        parent: FIXContainer,
+    ) -> None:
         self.tag = tag
         self.repeating_group_tags = repeating_group_tags
         self.parent = parent
@@ -23,13 +32,15 @@ class Codec:
     Attributes:
         protocol: FIX protocol
         SOH: encoded message separator
+
     """
 
-    def __init__(self, protocol: FIXProtocolBase):
+    def __init__(self, protocol: FIXProtocolBase) -> None:
         """Codec init.
 
         Args:
             protocol: FIX protocol used in encoding/decoding
+
         """
         self.protocol: FIXProtocolBase = protocol
         self.SOH = "\x01"
@@ -37,17 +48,17 @@ class Codec:
     @staticmethod
     def current_datetime() -> str:
         """FIX complaint date-time string (UTC now)."""
-        return datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
+        return datetime.now(UTC).strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
 
-    def _addTag(self, body, t, msg: FIXContainer):
+    def _add_tag(self, body: list[str], t: str, msg: FIXContainer) -> None:
         if msg.is_group(t):
             groups = msg.get_group_list(t)
-            body.append("%s=%s" % (t, len(groups)))
+            body.append(f"{t}={len(groups)}")
             for group in groups:
                 for tag in group.tags:
-                    self._addTag(body, tag, group)
+                    self._add_tag(body, tag, group)
         else:
-            body.append("%s=%s" % (t, msg[t]))
+            body.append(f"{t}={msg[t]}")
 
     def encode(
         self,
@@ -67,40 +78,37 @@ class Codec:
 
         Raises:
             EncodingError: when failed MsgSeqNum conditions for some types of messages
+
         """
         # Create body
-        body = []
+        body = [
+            f"{FTag.SenderCompID}={session.sender_comp_id}",
+            f"{FTag.TargetCompID}={session.target_comp_id}",
+        ]
 
         msg_type = msg.msg_type
-
-        body.append("%s=%s" % (FTag.SenderCompID, session.sender_comp_id))
-        body.append("%s=%s" % (FTag.TargetCompID, session.target_comp_id))
-
-        seq_no = 0
         if raw_seq_num:
             seq_no = int(msg[FTag.MsgSeqNum])
+        elif msg_type == FMsg.SEQUENCERESET:
+            if FTag.MsgSeqNum not in msg:
+                raise EncodingError(
+                    "SequenceReset must have the MsgSeqNum already populated",
+                )
+            seq_no = int(msg[FTag.MsgSeqNum])
+        elif msg.get(FTag.PossDupFlag, "N") == "Y":
+            # if we have the PossDupFlag set, we need to send the message
+            # with the same seqNo
+            if FTag.MsgSeqNum not in msg:
+                raise EncodingError(
+                    "Failed to encode message with PossDupFlag=Y but no"
+                    " previous MsgSeqNum",
+                )
+            seq_no = int(msg[FTag.MsgSeqNum])
         else:
-            if msg_type == FMsg.SEQUENCERESET:
-                if FTag.MsgSeqNum not in msg:
-                    raise EncodingError(
-                        "SequenceReset must have the MsgSeqNum already populated"
-                    )
-                seq_no = int(msg[FTag.MsgSeqNum])
-            else:
-                # if we have the PossDupFlag set, we need to send the message
-                #   with the same seqNo
-                if msg.get(FTag.PossDupFlag, "N") == "Y":
-                    if FTag.MsgSeqNum not in msg:
-                        raise EncodingError(
-                            "Failed to encode message with PossDupFlag=Y but no"
-                            " previous MsgSeqNum"
-                        )
-                    seq_no = int(msg[FTag.MsgSeqNum])
-                else:
-                    seq_no = session.allocate_next_num_out()
+            seq_no = session.allocate_next_num_out()
 
-        body.append("%s=%s" % (FTag.MsgSeqNum, seq_no))
-        body.append("%s=%s" % (FTag.SendingTime, self.current_datetime()))
+        body.append(f"{FTag.MsgSeqNum}={seq_no}")
+        body.append(f"{FTag.SendingTime}={self.current_datetime()}")
 
         for t in msg.tags:
             if t in {
@@ -110,28 +118,24 @@ class Codec:
                 FTag.TargetCompID,
             }:
                 continue
-            self._addTag(body, t, msg)
+            self._add_tag(body, t, msg)
 
-        # Enable easy change when debugging
-        SEP = self.SOH
-
-        body = self.SOH.join(body) + self.SOH
+        body_string = self.SOH.join(body) + self.SOH
 
         # Create header
         header = []
-        msg_type = "%s=%s" % (FTag.MsgType, msg_type)
-        header.append("%s=%s" % (FTag.BeginString, self.protocol.beginstring))
-        header.append("%s=%i" % (FTag.BodyLength, len(body) + len(msg_type) + 1))
+        msg_type = f"{FTag.MsgType}={msg_type}"
+        header.append(f"{FTag.BeginString}={self.protocol.beginstring}")
+        header.append(f"{FTag.BodyLength}={len(body_string) + len(msg_type) + 1}")
         header.append(msg_type)
 
-        fixmsg = self.SOH.join(header) + self.SOH + body
-
-        cksum = sum([ord(i) for i in fixmsg]) % 256
-        fixmsg = fixmsg + "%s=%0.3i" % (FTag.CheckSum, cksum)
+        fix_msg = self.SOH.join(header) + self.SOH + body_string
+        cksum = sum([ord(i) for i in fix_msg]) % 256
+        fix_msg = fix_msg + f"{FTag.CheckSum}={cksum:03}"
 
         # print len(fixmsg)
 
-        return fixmsg + SEP
+        return fix_msg + self.SOH
 
     def decode(
         self,
@@ -147,6 +151,7 @@ class Codec:
         Returns:
             if OK - (FIXMessage, bytes_processed, valid_raw_msg_bytes)
             if ERR - (None, n_bytes_skip, None)
+
         """
         valid_idx = rawmsg.find(b"8=FIX.")
         if valid_idx == -1:
@@ -171,37 +176,41 @@ class Codec:
             msg = msg[:-1]
 
         # at a minimum we require BeginString, BodyLength & Checksum
-        if len(msg) < 3:
+        if len(msg) < MINIMUM_MSG_LENGTH:
             assert silent, "Minimum message"
-            return (None, parsed_length, None)
+            return None, parsed_length, None
 
         tag, value = msg[0].split("=", 1)
         if value != self.protocol.beginstring:
             logging.error(
-                "FIX Version unexpected (Recv: %s Expected: %s)"
-                % (value, self.protocol.beginstring)
+                "FIX Version unexpected (Recv: %s Expected: %s)",
+                value,
+                self.protocol.beginstring,
             )
             assert silent, "protocol beginstring mismatch"
-            return (None, len(rawmsg), None)
+            return None, len(rawmsg), None
 
-        toks = msg[1].split("=", 1)
-        if len(toks) != 2:
+        tokens = msg[1].split("=", 1)
+        if len(tokens) != TOKENS_LENGTH:
             assert silent, f"BodyLength split error {msg}"
-            return (None, len(rawmsg), None)
-        tag, value = toks
+            return None, len(rawmsg), None
+        tag, value = tokens
 
         msg_length = len(msg[0]) + len(msg[1]) + len("10=000") + 3
         if tag != FTag.BodyLength:
-            logging.error(f"*** BodyLength missing or not 2nd field *** [{tag}]: {msg}")
+            logging.error(
+                "*** BodyLength missing or not 2nd field *** [%s]: %s",
+                tag,
+                msg,
+            )
             assert silent, "2nd tag must be BodyLength"
-            return (None, len(rawmsg), None)
-        else:
-            msg_length += int(value)
+            return None, len(rawmsg), None
+        msg_length += int(value)
 
         # message looks incomplete
         if msg_length > len(rawmsg):
             assert silent, "incomplete message"
-            return (None, parsed_length, None)
+            return None, parsed_length, None
 
         checksum_passed = False
         parsed_length += msg_length
@@ -212,11 +221,11 @@ class Codec:
         current_context = decoded_msg
 
         for m in msg:
-            toks = m.split("=", 1)
-            if len(toks) != 2:
+            tokens = m.split("=", 1)
+            if len(tokens) != TOKENS_LENGTH:
                 assert silent, f"incomplete tag {m}"
-                return (None, len(rawmsg), None)
-            tag, value = toks
+                return None, len(rawmsg), None
+            tag, value = tokens
 
             if tag == FTag.CheckSum:
                 cheksum_base = self.SOH.join(msg[:-1])
@@ -224,7 +233,9 @@ class Codec:
 
                 if checksum != int(value):
                     logging.warning(
-                        "\tCheckSum: %s (INVALID) expecting %s" % (int(value), checksum)
+                        "\tCheckSum: %s (INVALID) expecting %s",
+                        int(value),
+                        checksum,
                     )
                     assert (
                         silent
@@ -247,14 +258,17 @@ class Codec:
                         and tag not in current_context.repeating_group_tags
                     ):
                         current_context.parent.add_group(
-                            current_context.tag, current_context
+                            current_context.tag,
+                            current_context,
                         )
                         current_context = current_context.parent
                         # pop the completed group off the stack
                         del repeating_groups[-1]
 
                 ctx = _RepeatingGroupContext(
-                    tag, repeating_group_tags[tag], current_context
+                    tag,
+                    repeating_group_tags[tag],
+                    current_context,
                 )
                 repeating_groups.append(ctx)
                 current_context = ctx
@@ -265,7 +279,8 @@ class Codec:
                     repeating_groups and tag not in current_context.repeating_group_tags
                 ):
                     current_context.parent.add_group(
-                        current_context.tag, current_context
+                        current_context.tag,
+                        current_context,
                     )
                     current_context = current_context.parent
                     # pop the completed group off the stack
@@ -275,7 +290,8 @@ class Codec:
                     # if the repeating group already contains this field,
                     #     start the next
                     current_context.parent.add_group(
-                        current_context.tag, current_context
+                        current_context.tag,
+                        current_context,
                     )
                     ctx = _RepeatingGroupContext(
                         current_context.tag,
@@ -288,16 +304,14 @@ class Codec:
 
                 # else add it to the current one
                 current_context.set(tag, value)
+            elif tag in decoded_msg:
+                # Repeating tag found, possibly RepGrp not in protocol schema
+                decoded_msg.set(tag, RepeatingTagError)
             else:
-                if tag in decoded_msg:
-                    # Repeating tag found, possibly RepGrp not in protocol schema
-                    decoded_msg.set(tag, RepeatingTagError)
-                else:
-                    # this isn't a repeating group field, so just add it normally
-                    decoded_msg.set(tag, value)
+                # this isn't a repeating group field, so just add it normally
+                decoded_msg.set(tag, value)
 
         if checksum_passed:
-            return (decoded_msg, parsed_length, encoded_msg)
-        else:
-            assert silent, f"Checksum probably missing: {msg}"
-            return (None, parsed_length, None)
+            return decoded_msg, parsed_length, encoded_msg
+        assert silent, f"Checksum probably missing: {msg}"
+        return None, parsed_length, None
