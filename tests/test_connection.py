@@ -41,7 +41,7 @@ async def fix_connection_socket():
         "ACCEPTOR",
         journaler=j,
         host="localhost",
-        port="64444",
+        port=64444,
         heartbeat_period=30,
         logger=log,
     )
@@ -144,7 +144,7 @@ async def test_connection_logon_acceptor_logon(fix_connection):
     ft = FIXTester(schema=FIX_SCHEMA, connection=conn)
 
     assert conn._connection_state == ConnectionState.NETWORK_CONN_ESTABLISHED
-    rmsg = await ft.reply(ft.msg_logon())
+    _ = await ft.reply(ft.msg_logon())
     assert conn.connection_role == ConnectionRole.ACCEPTOR
     assert conn._connection_state == ConnectionState.ACTIVE
 
@@ -156,7 +156,7 @@ async def test_connection_logon_acceptor_logon_first_message_expected(fix_connec
 
     assert conn._connection_state == ConnectionState.NETWORK_CONN_ESTABLISHED
     msg_reset = ft.msg_sequence_reset(1, 2)
-    rmsg = await ft.reply(msg_reset)
+    _ = await ft.reply(msg_reset)
     assert conn._connection_state == ConnectionState.DISCONNECTED_BROKEN_CONN
 
 
@@ -885,7 +885,7 @@ async def test_connection_init_launch_tasks(fix_connection):
             "ACCEPTOR",
             journaler=journaler_mock,
             host="localhost",
-            port="64444",
+            port=64444,
             heartbeat_period=33,
         )
 

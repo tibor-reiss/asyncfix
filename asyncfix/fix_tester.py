@@ -1,5 +1,6 @@
 """FIX Protocol Unit Tester."""
 from math import isnan, nan
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 from asyncfix import FIXMessage, FMsg, FTag
@@ -34,7 +35,7 @@ class FIXTester:
             schema: (optional) FIXSchema for validating incoming/outgoing messages
             connection: (optional) fix initiator connection
         """
-        self.registered_orders = {}
+        self.registered_orders: dict[str, FIXNewOrderSingle] = {}
         self.schema = schema
         self._order_id = 0
         self._exec_id = 10000
@@ -43,12 +44,12 @@ class FIXTester:
         self.initiator_sent: list[FIXMessage] = []
         """List of fix messages sent by self.connection.send_msg()."""
 
-        self.acceptor_rcv_que: list[tuple(FIXMessage, bytes)] = []
+        self.acceptor_rcv_que: list[tuple[FIXMessage, bytes]] = []
 
         self.acceptor_sent: list[FIXMessage] = []
         """List of fix messages sent by FIXTester.reply()."""
 
-        if connection:
+        if self.conn_init is not None:
             assert isinstance(connection, AsyncFIXConnection)
             # target and session swapped! Because we mimic the server
             j = Journaler()
@@ -58,7 +59,7 @@ class FIXTester:
                 sender_comp_id=self.conn_init._session.target_comp_id,
                 journaler=j,
                 host="localhost",
-                port="64444",
+                port=64444,
                 heartbeat_period=30,
                 logger=self.conn_init.log,
             )
@@ -110,7 +111,7 @@ class FIXTester:
 
     def acceptor_sent_query(
         self,
-        tags: tuple[FTag | str | int] | None = None,
+        tags: tuple[FTag | str | int, ...],
         index: int = -1,
     ) -> dict[FTag | str, str]:
         """Query message sent from FIXTester to initiator.
@@ -126,7 +127,7 @@ class FIXTester:
 
     def initiator_sent_query(
         self,
-        tags: tuple[FTag | str | int] | None = None,
+        tags: tuple[FTag | str | int, ...],
         index: int = -1,
     ) -> dict[FTag | str, str]:
         """Query message sent from initiator to FixTester.
@@ -182,6 +183,9 @@ class FIXTester:
         Args:
             msg: arbitrary FIXMessage
         """
+        assert self.conn_accept is not None
+        assert self.conn_init is not None
+
         if self.schema:
             self.schema.validate(msg)
 
@@ -194,12 +198,11 @@ class FIXTester:
         # Pretend the message was transfered to initiator
         decoded_msg, _, _ = self.conn_init._codec.decode(raw_msg, silent=False)
 
-        if self.schema:
-            self.schema.validate(decoded_msg)
-
-        self.acceptor_sent.append(decoded_msg)
-
-        await self.conn_init._process_message(decoded_msg, raw_msg)
+        if decoded_msg is not None:
+            if self.schema and decoded_msg is not None:
+                self.schema.validate(decoded_msg)
+            self.acceptor_sent.append(decoded_msg)
+            await self.conn_init._process_message(decoded_msg, raw_msg)
 
         return decoded_msg
 
@@ -301,7 +304,7 @@ class FIXTester:
         last_qty: float = nan,
         price: float = nan,
         order_qty: float = nan,
-        orig_clord_id: str = None,
+        orig_clord_id: Optional[str] = None,
         avg_price: float = 0.0,
     ) -> FIXMessage:
         """Generates synthetic EXECUTIONREPORT.
