@@ -129,14 +129,14 @@ class Journaler:
             assert next_num_out > 0
             session.next_num_out = next_num_out
         else:
-            assert session.next_num_out is not None and session.next_num_out > 0
+            assert session.next_num_out > 0
             next_num_out = session.next_num_out
 
         if next_num_in is not None:
             assert next_num_in > 0
             session.next_num_in = next_num_in
         else:
-            assert session.next_num_in is not None and session.next_num_in > 0
+            assert session.next_num_in > 0
             next_num_in = session.next_num_in
 
         self.cursor.execute(
