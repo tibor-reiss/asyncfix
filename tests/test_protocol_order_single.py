@@ -1,6 +1,4 @@
 import os
-import time
-import unittest
 import xml.etree.ElementTree as ET
 from math import isnan, nan
 
@@ -18,7 +16,6 @@ FIX_SCHEMA = FIXSchema(fix44_schema)
 
 
 def test_init_order_single_default_short():
-    ord_dict = {}
     o = FIXNewOrderSingle(
         "clordTest", "US.F.TICKER", side=FOrdSide.SELL, price=100.0, qty=20
     )
@@ -709,7 +706,7 @@ def test_cancel_req():
     o = FIXNewOrderSingle(
         "clordTest", "US.F.TICKER", side=FOrdSide.SELL, price=100.0, qty=20
     )
-    new_req = o.new_req()
+    _ = o.new_req()
     o.status = FOrdStatus.NEW
 
     m = o.cancel_req()
@@ -922,7 +919,7 @@ def test_cancel_req__part_filled_order__with_some_execution_between():
     )
     assert o.process_execution_report(msg) == 1
 
-    cxl_req = ft.fix_cxl_request(o)
+    _ = ft.fix_cxl_request(o)
     assert o.status == FOrdStatus.PENDING_CANCEL
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
@@ -1119,7 +1116,7 @@ def test_cancel_req__not_acknoledged_order_by_gate():
     assert o.status == FOrdStatus.CREATED, f"o.status={o.status}"
 
     with pytest.raises(FIXError, match="order is not allowed for cancel"):
-        cxl_req = o.cancel_req()
+        _ = o.cancel_req()
     assert not o.can_replace()
     assert not o.can_cancel()
 
@@ -1129,7 +1126,7 @@ def test_cancel_req__not_acknoledged_order_by_gate():
     assert o.process_execution_report(msg) == 1
 
     with pytest.raises(FIXError, match="order is not allowed for cancel"):
-        cxl_req = o.cancel_req()
+        _ = o.cancel_req()
     assert not o.can_replace()
     assert not o.can_cancel()
 
@@ -1153,7 +1150,7 @@ def test_cancel_req__multiple_requests_are_blocked():
     )
     assert o.process_execution_report(msg) == 1
 
-    cxl_req = ft.fix_cxl_request(o)
+    _ = ft.fix_cxl_request(o)
     assert o.status == FOrdStatus.PENDING_CANCEL
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
@@ -1218,7 +1215,7 @@ def test_replace_req():
     o.new_req()
     o.status = FOrdStatus.NEW
 
-    old_clord = o.clord_id
+    _ = o.clord_id
     assert o.can_replace()
     m = o.replace_req(200, 30)
     assert not o.can_replace()
@@ -1286,15 +1283,15 @@ def test_replace_req__not_set():
     o.status = FOrdStatus.NEW
 
     with pytest.raises(FIXError, match="no price / qty change in replace_req"):
-        m = o.replace_req(nan, nan)
+        _ = o.replace_req(nan, nan)
 
     # No change in price/qty
     with pytest.raises(FIXError, match="no price / qty change in replace_req"):
-        m = o.replace_req(o.price, o.qty)
+        _ = o.replace_req(o.price, o.qty)
 
     # No change in price/qty
     with pytest.raises(FIXError, match="no price / qty change in replace_req"):
-        m = o.replace_req(o.price, 0)
+        _ = o.replace_req(o.price, 0)
 
 
 def test_replace_req__zero_filled__increased_qty():
@@ -1320,7 +1317,7 @@ def test_replace_req__zero_filled__increased_qty():
     )
     assert o.process_execution_report(msg) == 1
 
-    cxl_req = ft.fix_rep_request(o, 300, 11)
+    _ = ft.fix_rep_request(o, 300, 11)
     assert o.status == FOrdStatus.PENDING_REPLACE
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
@@ -1404,7 +1401,7 @@ def test_replace_req__part_filled__increased_qty_while_pending_replace_fractiona
     assert o.process_execution_report(msg) == 1
     old_clord = o.clord_id
 
-    cxl_req = ft.fix_rep_request(o, 300, 12)
+    _ = ft.fix_rep_request(o, 300, 12)
     assert o.status == FOrdStatus.PENDING_REPLACE
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
@@ -1624,7 +1621,7 @@ def test_replace_req__filled_order_rejected__filled_increase_passed():
     )
     assert o.process_execution_report(msg) == 1
 
-    cxl_req = ft.fix_rep_request(o, 300, 12)
+    _ = ft.fix_rep_request(o, 300, 12)
     assert o.status == FOrdStatus.PENDING_REPLACE
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
@@ -1808,7 +1805,7 @@ def test_replace_req__decreased_qty():
     )
     assert o.process_execution_report(msg) == 1
 
-    cxl_req = ft.fix_rep_request(o, nan, 9)
+    _ = ft.fix_rep_request(o, nan, 9)
     assert o.status == FOrdStatus.PENDING_REPLACE
 
     msg = ft.fix_exec_report_msg(
@@ -1871,7 +1868,7 @@ def test_replace_req__decreased_qty_exact_match_to_fill():
     )
     assert o.process_execution_report(msg) == 1
 
-    cxl_req = ft.fix_rep_request(o, nan, 7)
+    _ = ft.fix_rep_request(o, nan, 7)
     assert o.status == FOrdStatus.PENDING_REPLACE
 
     msg = ft.fix_exec_report_msg(
@@ -1933,7 +1930,7 @@ def test_replace_req__decreased_qty__also_less_than_cum_qty():
     )
     assert o.process_execution_report(msg) == 1
 
-    cxl_req = ft.fix_rep_request(o, nan, 7)
+    _ = ft.fix_rep_request(o, nan, 7)
     assert o.status == FOrdStatus.PENDING_REPLACE
 
     msg = ft.fix_exec_report_msg(

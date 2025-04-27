@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from enum import Enum
+from typing import Optional
 
 from asyncfix import FMsg, FTag
 from asyncfix.errors import (
@@ -29,16 +30,16 @@ class MessageDirection(Enum):
 
 
 class _FIXRepeatingGroupContainer:
-    def __init__(self):
+    def __init__(self) -> None:
         self.groups: list[FIXContainer] = []
 
-    def add_group(self, group, index):
+    def add_group(self, group, index) -> None:
         if index == -1:
             self.groups.append(group)
         else:
             self.groups.insert(index, group)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(len(self.groups)) + "=>" + str(self.groups)
 
     __repr__ = __str__
@@ -53,7 +54,7 @@ class FIXContainer:
 
     def __init__(
         self,
-        tags: dict[str | int, [str, float, int, list[dict | FIXContainer]]] = None,
+        tags: Optional[dict[str | int, str | float | int | list[dict | FIXContainer]]] = None,
     ):
         """Initialize.
 
@@ -182,7 +183,7 @@ class FIXContainer:
             group_container.add_group(group, index)
             self.tags[tag] = group_container
 
-    def set_group(self, tag: str | int, groups: list[dict, FIXContainer]):
+    def set_group(self, tag: str | int, groups: list[dict | FIXContainer]):
         """Set repeating groups of the message.
 
         Args:
@@ -282,7 +283,7 @@ class FIXContainer:
 
         return g[index]
 
-    def query(self, *tags: tuple[FTag | str | int]) -> dict[FTag | str, str]:
+    def query(self, *tags: FTag | str | int) -> dict[FTag | str, str]:
         """Request multiple tags from FIXMessage as dictionary.
 
         Args:
@@ -293,7 +294,7 @@ class FIXContainer:
         """
         result = {}
         if not tags:
-            tags = self.tags
+            tags = tuple(self.tags.keys())
 
         for t in tags:
             try:
@@ -335,7 +336,7 @@ class FIXContainer:
         r += "|".join(allTags)
         return r
 
-    def __eq__(self, other: FIXContainer | dict) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Equality checks.
 
         Args:
@@ -393,7 +394,7 @@ class FIXMessage(FIXContainer):
     def __init__(
         self,
         msg_type: str | FMsg,
-        tags: dict[str | int, [str, float, int]] = None,
+        tags: Optional[dict[str | int, str | float | int | list[dict | FIXContainer]]] = None,
     ):
         """Initialize.
 
