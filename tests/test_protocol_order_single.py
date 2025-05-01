@@ -6,9 +6,9 @@ import pytest
 
 from asyncfix import FIXTester, FMsg, FTag
 from asyncfix.errors import FIXError
-from asyncfix.protocol.common import FExecType, FOrdSide, FOrdStatus, FOrdType
-from asyncfix.protocol.order_single import FIXNewOrderSingle
-from asyncfix.protocol.schema import FIXSchema
+from asyncfix.protocol import FExecType, FOrdSide, FOrdStatus, FOrdType
+from asyncfix.protocol import FIXNewOrderSingle
+from asyncfix.protocol import FIXSchema
 
 TEST_DIR = os.path.abspath(os.path.dirname(__file__))
 fix44_schema = ET.parse(os.path.join(TEST_DIR, "FIX44.xml"))
