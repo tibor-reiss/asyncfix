@@ -233,8 +233,8 @@ class SchemaSet:
         Raises:
             ValueError: if not NUMINGROUP type or similar tag name
         """
-        self.name: str = name
-        self.field: SchemaField = field  # this is set for groups, with attached field
+        self.name = name
+        self.field = field  # this is set for groups, with attached field
         if field:
             if not (
                 ("No" in field.name or "Num" in field.name)
@@ -497,11 +497,10 @@ class FIXSchema:
 
         self._tag2field: dict[str, SchemaField] = {}
         self._field2tag: dict[str, SchemaField] = {}
-        self._header: SchemaHeader = None
+        self._header: SchemaHeader = SchemaHeader()
         self._components: dict[str, SchemaComponent] = {}
         self._messages: dict[str, SchemaMessage] = {}
         self._messages_types: dict[str, SchemaMessage] = {}
-        self._header = {}
         self._types = set()
 
         self._parse(xml_or_path.getroot())
@@ -588,9 +587,14 @@ class FIXSchema:
 
     def _parse_header(self, element: ET.Element):
         assert self._field2tag, "parse fields first!"
-        assert element.tag == "header"
-
-        self._header = self._parse_msg_set(SchemaHeader(), element)
+        if (element_header := element.find("header")) is not None:
+            header = self._parse_msg_set(SchemaHeader(), element_header)
+            if header is not None:
+                self._header = header
+            else:
+                raise FIXMessageError("Failed to parse header")
+        else:
+            raise FIXMessageError("Header not found in schema")
 
     def _parse_field(self, element: ET.Element):
         assert element.tag == "field"
@@ -611,13 +615,17 @@ class FIXSchema:
 
     def _parse(self, root: ET.Element):
         assert not self._field2tag, "already parsed"
-
-        for element in root.find("fields"):
+        if (fields := root.find("fields")) is None:
+            raise FIXMessageError("No fields in schema")
+        for element in fields:
             self._parse_field(element)
 
-        self._parse_header(root.find("header"))
+        self._parse_header(root)
 
-        all_components = [e for e in root.find("components")]
+        if (components := root.find("components")) is None:
+            all_components = []
+        else:
+            all_components = [e for e in components]
         full_count = len(all_components)
         prev_cnt = len(all_components)
         while all_components:
@@ -641,13 +649,16 @@ class FIXSchema:
         assert full_count == len(self._components), "Component count mismatch"
 
         n_msg = 0
-        for element in root.find("messages"):
-            self._parse_message(element)
-            n_msg += 1
+        if (messages := root.find("messages")) is not None:
+            for element in messages:
+                self._parse_message(element)
+                n_msg += 1
 
         assert n_msg == len(self._messages), "Message count mismatch"
 
     def _validate_header(self, msg: FIXMessage):
+        if self._header is None:
+            return
         schema_fields = set()
         schema_msg = self._header
         for fname, req in schema_msg.required.items():
