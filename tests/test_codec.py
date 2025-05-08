@@ -456,17 +456,7 @@ def test_encode_decode_pos_dup_flag(fix_session):
 def test_decode_custom_msg_type(fix_session):
     protocol = FIXProtocol44()
     codec = Codec(protocol)
-
-    msg = FIXMessage(codec.protocol.msgtype.NEWORDERSINGLE)
-    msg.set(codec.protocol.fixtags.Price, "123.45")
-    msg.set(codec.protocol.fixtags.OrderQty, 9876)
-    msg.set(codec.protocol.fixtags.Symbol, "VOD.L")
-    protocol = FIXProtocol44()
-    codec = Codec(protocol)
-    # enc_msg = codec.encode(msg, fix_session)
-    # print(repr(enc_msg))
-    # assert False, enc_msg
-
     enc_msg = b"8=FIX.4.4\x019=82\x0135=ASD\x0149=sender\x0156=target\x0134=1\x0152=20230919-07:13:26.808\x0144=123.45\x0138=9876\x0155=VOD.L\x0110=248\x01"  # noqa
-    msg, parsed_len, raw_msg = codec.decode(enc_msg, silent=False)
-    assert msg.msg_type == "ASD"
+    with pytest.raises(AssertionError, match="Invalid msg_type ASD"):
+        msg, parsed_len, raw_msg = codec.decode(enc_msg, silent=False)
+        assert msg.msg_type == "ASD"

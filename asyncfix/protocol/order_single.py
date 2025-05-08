@@ -60,7 +60,7 @@ class FIXNewOrderSingle:
 
         self.clord_id = clord_id
         self.orig_clord_id: Optional[str] = None
-        self.order_id = None
+        self.order_id: Optional[str] = None
         self.ticker = cl_ticker
         self.side = side
         self.price = price
@@ -288,7 +288,7 @@ class FIXNewOrderSingle:
         order_status = m[FTag.OrdStatus]
 
         new_status = self.change_status(
-            self.status, m.msg_type, 0, order_status, raise_on_err=False
+            self.status, m.msg_type, FExecType.NEW, FOrdStatus(order_status), raise_on_err=False
         )
         #
         if order_status == FOrdStatus.REJECTED:
@@ -322,7 +322,7 @@ class FIXNewOrderSingle:
         leaves_qty = float(m[FTag.LeavesQty])
 
         new_status = FIXNewOrderSingle.change_status(
-            self.status, m.msg_type, exec_type, order_status, raise_on_err=False
+            self.status, m.msg_type, FExecType(exec_type), FOrdStatus(order_status), raise_on_err=False
         )
 
         self.order_id = m[FTag.OrderID]
@@ -366,7 +366,7 @@ class FIXNewOrderSingle:
             FIXNewOrderSingle.change_status(
                 self.status,
                 FMsg.ORDERCANCELREQUEST,
-                0,  # Exec Type - omitted!
+                FExecType.NEW,  # Exec Type - omitted!
                 FOrdStatus.PENDING_CANCEL,
                 raise_on_err=False,
             )
@@ -379,7 +379,7 @@ class FIXNewOrderSingle:
             FIXNewOrderSingle.change_status(
                 self.status,
                 FMsg.ORDERCANCELREPLACEREQUEST,
-                0,  # Exec Type - omitted!
+                FExecType.NEW,  # Exec Type - omitted!
                 FOrdStatus.PENDING_REPLACE,
                 raise_on_err=False,
             )

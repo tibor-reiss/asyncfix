@@ -124,10 +124,10 @@ class Codec:
 
         # Create header
         header = []
-        msg_type = f"{FTag.MsgType}={msg_type}"
+        msg_type_str = f"{FTag.MsgType}={msg_type}"
         header.append(f"{FTag.BeginString}={self.protocol.beginstring}")
-        header.append(f"{FTag.BodyLength}={len(body_string) + len(msg_type) + 1}")
-        header.append(msg_type)
+        header.append(f"{FTag.BodyLength}={len(body_string) + len(msg_type_str) + 1}")
+        header.append(msg_type_str)
 
         fix_msg = self.SOH.join(header) + self.SOH + body_string
         cksum = sum([ord(i) for i in fix_msg]) % 256
@@ -247,7 +247,8 @@ class Codec:
                 try:
                     decoded_msg.msg_type = FMsg(value)
                 except ValueError:
-                    decoded_msg.msg_type = value
+                    assert silent, f"Invalid msg_type {value}"
+                    return None, len(rawmsg), None
 
             # found the start of a repeating group
             if tag in repeating_group_tags:

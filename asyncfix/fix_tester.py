@@ -206,9 +206,9 @@ class FIXTester:
 
         return decoded_msg
 
-    def _next_order_id(self) -> int:
+    def _next_order_id(self) -> str:
         self._order_id += 1
-        return self._order_id
+        return str(self._order_id)
 
     def _next_exec_id(self) -> int:
         self._exec_id += 1
@@ -331,10 +331,7 @@ class FIXTester:
         assert clord_id
         m[FTag.ClOrdID] = clord_id
 
-        if order.order_id is None:
-            order_id = self._next_order_id()
-        else:
-            order_id = order.order_id
+        order_id = order.order_id or self._next_order_id()
 
         m[FTag.OrderID] = order_id
         m[FTag.ExecID] = self._next_exec_id()

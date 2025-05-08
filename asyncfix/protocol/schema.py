@@ -687,7 +687,7 @@ class FIXSchema:
         if msg.msg_type not in self._messages_types:
             raise FIXMessageError(f"msg_type=`{msg.msg_type}` not in schema")
 
-        schema_msg = self._messages_types[msg.msg_type]
+        schema_msg = self._messages_types[str(msg.msg_type)]
 
         schema_fields = set()
         for fname, req in schema_msg.required.items():

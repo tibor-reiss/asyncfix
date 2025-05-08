@@ -402,16 +402,16 @@ class FIXMessage(FIXContainer):
             msg_type: message type, must comply with FIXTag=35
             tags: initial tags values
         """
-        self._msg_type = msg_type
+        self._msg_type = msg_type if isinstance(msg_type, FMsg) else FMsg(msg_type)
         super().__init__(tags)
 
     @property
-    def msg_type(self) -> str | FMsg:
+    def msg_type(self) -> FMsg:
         """Message type."""
         return self._msg_type
 
     @msg_type.setter
-    def msg_type(self, msg_type: str | FMsg):
+    def msg_type(self, msg_type: FMsg):
         """Message type setter.
 
         Args:

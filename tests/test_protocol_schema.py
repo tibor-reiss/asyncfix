@@ -354,8 +354,8 @@ def test_schema_validation(fix_simple_xml):
     m = FIXMessage(FMsg.EXECUTIONREPORT, {FTag.OrderID: "1234"})
     schema.validate(m)
 
-    m = FIXMessage("1ASD")
-    with pytest.raises(FIXMessageError, match="msg_type=`1ASD` not in schema"):
+    m = FIXMessage("9")
+    with pytest.raises(FIXMessageError, match="msg_type=`9` not in schema"):
         schema.validate(m)
 
     m = FIXMessage(FMsg.EXECUTIONREPORT, {})
