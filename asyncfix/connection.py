@@ -151,13 +151,13 @@ class AsyncFIXConnection:
         self._heartbeat_period = heartbeat_period
         self._message_last_time = 0.0
         self._max_seq_num_resend = 0
-        self._test_req_id = None
+        self._test_req_id: Optional[int] = None
         self._socket_reader: Optional[asyncio.StreamReader] = None
         self._socket_writer: Optional[asyncio.StreamWriter] = None
         self._host = host
         self._port = int(port)
-        self._aio_task_socket_read = None
-        self._aio_task_heartbeat = None
+        self._aio_task_socket_read: Optional[asyncio.Task] = None
+        self._aio_task_heartbeat: Optional[asyncio.Task] = None
 
     @property
     def connection_state(self) -> ConnectionState:
@@ -178,6 +178,14 @@ class AsyncFIXConnection:
     def protocol(self) -> FIXProtocolBase:
         """Underlying FIXProtocolBase of a connection."""
         return self._codec.protocol
+
+    @property
+    def session(self) -> FIXSession:
+        return self._session
+
+    @property
+    def codec(self) -> Codec:
+        return self._codec
 
     async def connect(self):
         """Transport initialization method."""
@@ -268,6 +276,8 @@ class AsyncFIXConnection:
             f" {repr(msg.msg_type)}\n\t {msg_raw.decode()}\n"
         )
 
+        if self._socket_writer is None:
+            raise RuntimeError("Socket writer was not opened")
         self._socket_writer.write(encoded_msg)
         await self._socket_writer.drain()
 
@@ -324,7 +334,7 @@ class AsyncFIXConnection:
                     if parsed_length > 0:
                         self._msg_buffer = self._msg_buffer[parsed_length:]
 
-                    if decoded_msg is None:
+                    if decoded_msg is None or raw_msg is None:
                         break
 
                     await self._process_message(decoded_msg, raw_msg)

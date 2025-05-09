@@ -1403,6 +1403,7 @@ def test_replace_req__part_filled__increased_qty_while_pending_replace_fractiona
 
     _ = ft.fix_rep_request(o, 300, 12)
     assert o.status == FOrdStatus.PENDING_REPLACE
+    assert o.orig_clord_id is not None
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
     assert o.is_finished() == 0
@@ -1557,6 +1558,7 @@ def test_replace_req__filled_order_rejected_after_filled():
 
     cxl_req = ft.fix_rep_request(o, 300, 12)
     assert o.status == FOrdStatus.PENDING_REPLACE
+    assert o.orig_clord_id is not None
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
     assert o.is_finished() == 0
@@ -1623,6 +1625,7 @@ def test_replace_req__filled_order_rejected__filled_increase_passed():
 
     _ = ft.fix_rep_request(o, 300, 12)
     assert o.status == FOrdStatus.PENDING_REPLACE
+    assert o.orig_clord_id is not None
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
     assert o.is_finished() == 0
@@ -1733,6 +1736,7 @@ def test_replace_req__replace_price_only_but_rejected_because_fill():
 
     cxl_req = ft.fix_rep_request(o, 300, nan)
     assert o.status == FOrdStatus.PENDING_REPLACE
+    assert o.orig_clord_id is not None
     assert o.can_replace() == 0
     assert o.can_cancel() == 0
     assert o.is_finished() == 0
@@ -1807,6 +1811,7 @@ def test_replace_req__decreased_qty():
 
     _ = ft.fix_rep_request(o, nan, 9)
     assert o.status == FOrdStatus.PENDING_REPLACE
+    assert o.orig_clord_id is not None
 
     msg = ft.fix_exec_report_msg(
         o,
@@ -1870,6 +1875,7 @@ def test_replace_req__decreased_qty_exact_match_to_fill():
 
     _ = ft.fix_rep_request(o, nan, 7)
     assert o.status == FOrdStatus.PENDING_REPLACE
+    assert o.orig_clord_id is not None
 
     msg = ft.fix_exec_report_msg(
         o,
@@ -1932,6 +1938,7 @@ def test_replace_req__decreased_qty__also_less_than_cum_qty():
 
     _ = ft.fix_rep_request(o, nan, 7)
     assert o.status == FOrdStatus.PENDING_REPLACE
+    assert o.orig_clord_id is not None
 
     msg = ft.fix_exec_report_msg(
         o,

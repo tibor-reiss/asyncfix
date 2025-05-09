@@ -188,7 +188,7 @@ class FIXNewOrderSingle:
         if price == self.price and qty == self.qty:
             raise FIXError("no price / qty change in replace_req")
 
-        assert not self.orig_clord_id
+        assert self.orig_clord_id is None
         self.orig_clord_id = self.clord_id
         self.clord_id = self.clord_next()
 

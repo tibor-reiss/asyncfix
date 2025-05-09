@@ -325,15 +325,15 @@ class FIXContainer:
         """Checks if container contains tags."""
         return str(item) in self.tags
 
-    def __str__(self):
+    def __str__(self) -> str:
         """As string."""
         r = ""
-        allTags = []
+        all_tags = []
         for tag, tag_value in self.tags.items():
             if _isclass(tag_value) and issubclass(tag_value, Exception):
                 tag_value = "#err#"
-            allTags.append("%s=%s" % (tag, tag_value))
-        r += "|".join(allTags)
+            all_tags.append("%s=%s" % (tag, tag_value))
+        r += "|".join(all_tags)
         return r
 
     def __eq__(self, other: object) -> bool:
@@ -419,6 +419,6 @@ class FIXMessage(FIXContainer):
         """
         self._msg_type = msg_type
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Repr."""
         return f"msg_type={self.msg_type}|" + super().__str__()
