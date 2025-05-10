@@ -4,13 +4,24 @@ import logging
 from datetime import UTC, datetime
 
 from asyncfix import FMsg, FTag
-from asyncfix.errors import EncodingError
+from asyncfix.errors import EncodingError, InvalidTagError
 from asyncfix.message import FIXContainer, FIXMessage, RepeatingTagError
 from asyncfix.protocol import FIXProtocolBase
 from asyncfix.session import FIXSession
 
 MINIMUM_MSG_LENGTH = 3
 TOKENS_LENGTH = 2
+
+
+def _split_tag(tag: str, silent: bool = True, custom_error: str = "") -> tuple[str, str]:
+    tokens = tag.split("=", 1)
+    if len(tokens) != TOKENS_LENGTH:
+        if custom_error:
+            assert silent, f"{custom_error} {tag}"
+        else:
+            assert silent, f"incomplete tag {tag}"
+        raise InvalidTagError
+    return tokens[0], tokens[1]
 
 
 class _RepeatingGroupContext(FIXContainer):
@@ -171,16 +182,19 @@ class Codec:
 
         encoded_msg = rawmsg[valid_idx : next_msg + valid_idx]
 
-        msg = msg[:next_msg].split(self.SOH)
-        if not msg[-1]:
-            msg = msg[:-1]
+        msg_tokens = msg[:next_msg].split(self.SOH)
+        if not msg_tokens[-1]:
+            msg_tokens = msg_tokens[:-1]
 
         # at a minimum we require BeginString, BodyLength & Checksum
-        if len(msg) < MINIMUM_MSG_LENGTH:
+        if len(msg_tokens) < MINIMUM_MSG_LENGTH:
             assert silent, "Minimum message"
             return None, parsed_length, None
 
-        tag, value = msg[0].split("=", 1)
+        try:
+            tag, value = _split_tag(msg_tokens[0], silent)
+        except InvalidTagError:
+            return None, len(rawmsg), None
         if value != self.protocol.beginstring:
             logging.error(
                 "FIX Version unexpected (Recv: %s Expected: %s)",
@@ -190,23 +204,21 @@ class Codec:
             assert silent, "protocol beginstring mismatch"
             return None, len(rawmsg), None
 
-        tokens = msg[1].split("=", 1)
-        if len(tokens) != TOKENS_LENGTH:
-            assert silent, f"BodyLength split error {msg}"
+        try:
+            tag, value = _split_tag(msg_tokens[1], silent, "BodyLength split error")
+        except InvalidTagError:
             return None, len(rawmsg), None
-        tag, value = tokens
-
-        msg_length = len(msg[0]) + len(msg[1]) + len("10=000") + 3
         if tag != FTag.BodyLength:
             logging.error(
                 "*** BodyLength missing or not 2nd field *** [%s]: %s",
                 tag,
-                msg,
+                msg_tokens,
             )
             assert silent, "2nd tag must be BodyLength"
             return None, len(rawmsg), None
-        msg_length += int(value)
 
+        msg_length = len(msg_tokens[0]) + len(msg_tokens[1]) + len("10=000") + 3
+        msg_length += int(value)
         # message looks incomplete
         if msg_length > len(rawmsg):
             assert silent, "incomplete message"
@@ -216,19 +228,17 @@ class Codec:
         parsed_length += msg_length
 
         decoded_msg = FIXMessage("UNKNOWN")
-        repeating_groups = []
-        repeating_group_tags = self.protocol.repeating_groups
-        current_context = decoded_msg
+        repeating_groups: list[_RepeatingGroupContext] = []
+        current_context: FIXContainer = decoded_msg
 
-        for m in msg:
-            tokens = m.split("=", 1)
-            if len(tokens) != TOKENS_LENGTH:
-                assert silent, f"incomplete tag {m}"
+        for m in msg_tokens:
+            try:
+                tag, value = _split_tag(m, silent)
+            except InvalidTagError:
                 return None, len(rawmsg), None
-            tag, value = tokens
 
             if tag == FTag.CheckSum:
-                cheksum_base = self.SOH.join(msg[:-1])
+                cheksum_base = self.SOH.join(msg_tokens[:-1])
                 checksum = (sum([ord(i) for i in cheksum_base]) + 1) % 256
 
                 if checksum != int(value):
@@ -239,7 +249,7 @@ class Codec:
                     )
                     assert (
                         silent
-                    ), f"invalid checksum tag[10]={value} expected: {checksum} {msg=}"
+                    ), f"invalid checksum tag[10]={value} expected: {checksum} {msg_tokens=}"
                     checksum_passed = False
                 else:
                     checksum_passed = True
@@ -251,33 +261,12 @@ class Codec:
                     return None, len(rawmsg), None
 
             # found the start of a repeating group
-            if tag in repeating_group_tags:
+            if tag in self.protocol.repeating_groups:
                 # i.e. we are already in a repeating group
-                if type(current_context) is _RepeatingGroupContext:
-                    while (
-                        repeating_groups
-                        and tag not in current_context.repeating_group_tags
-                    ):
-                        current_context.parent.add_group(
-                            current_context.tag,
-                            current_context,
-                        )
-                        current_context = current_context.parent
-                        # pop the completed group off the stack
-                        del repeating_groups[-1]
-
-                ctx = _RepeatingGroupContext(
-                    tag,
-                    repeating_group_tags[tag],
-                    current_context,
-                )
-                repeating_groups.append(ctx)
-                current_context = ctx
-            elif repeating_groups:
-                # we have 1 or more repeating groups in progress
-                #    & our tag isn't the start of a group
                 while (
-                    repeating_groups and tag not in current_context.repeating_group_tags
+                    isinstance(current_context, _RepeatingGroupContext)
+                    and repeating_groups
+                    and tag not in current_context.repeating_group_tags
                 ):
                     current_context.parent.add_group(
                         current_context.tag,
@@ -287,7 +276,30 @@ class Codec:
                     # pop the completed group off the stack
                     del repeating_groups[-1]
 
-                if tag in current_context.tags:
+                ctx = _RepeatingGroupContext(
+                    tag,
+                    self.protocol.repeating_groups[tag],
+                    current_context,
+                )
+                repeating_groups.append(ctx)
+                current_context = ctx
+            elif repeating_groups:
+                # we have 1 or more repeating groups in progress
+                #    & our tag isn't the start of a group
+                while (
+                    isinstance(current_context, _RepeatingGroupContext)
+                    and repeating_groups
+                    and tag not in current_context.repeating_group_tags
+                ):
+                    current_context.parent.add_group(
+                        current_context.tag,
+                        current_context,
+                    )
+                    current_context = current_context.parent
+                    # pop the completed group off the stack
+                    del repeating_groups[-1]
+
+                if tag in current_context.tags and isinstance(current_context, _RepeatingGroupContext):
                     # if the repeating group already contains this field,
                     #     start the next
                     current_context.parent.add_group(
@@ -314,5 +326,5 @@ class Codec:
 
         if checksum_passed:
             return decoded_msg, parsed_length, encoded_msg
-        assert silent, f"Checksum probably missing: {msg}"
+        assert silent, f"Checksum probably missing: {msg_tokens}"
         return None, parsed_length, None
