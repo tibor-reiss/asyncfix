@@ -218,33 +218,20 @@ class SchemaSet:
 
     Attributes:
         name: schema name
-        field: schema field
         members: members
         required: required flag
     """
 
-    def __init__(self, name: str, field: SchemaField | None = None):
+    def __init__(self, name: str):
         """Initialize.
 
         Args:
             name: name of abstract set
-            field: field of abstract set
 
         Raises:
             ValueError: if not NUMINGROUP type or similar tag name
         """
         self.name = name
-        self.field = field  # this is set for groups, with attached field
-        if field:
-            if not (
-                ("No" in field.name or "Num" in field.name)
-                and field.ftype in ["NUMINGROUP", "INT"]
-            ):
-                # warnings.warn('')
-                raise ValueError(
-                    "SchemaSet expected to have group field with NUMINGROUP|INT type,"
-                    f" name contais No/Num, got {field}"
-                )
         self.members: dict[SchemaField | SchemaSet, SchemaField | SchemaSet] = {}
         self.required: dict[SchemaField | SchemaSet, bool] = {}
 
@@ -258,10 +245,7 @@ class SchemaSet:
         Raises:
             ValueError: raised then tag is not single field
         """
-        if self.field:
-            return self.field.tag
-        else:
-            raise ValueError(f"tag property is not supported for {self}")
+        raise ValueError(f"tag property is not supported for {self}")
 
     def keys(self) -> list[str]:
         """List of field names."""
@@ -279,7 +263,7 @@ class SchemaSet:
         """
         if isinstance(field_or_set, SchemaField):
             assert field_or_set not in self.members
-        elif isinstance(field_or_set, SchemaSet):
+        elif isinstance(field_or_set, SchemaGroup):
             assert field_or_set.field, "field_or_set.field is empty, try to merge"
         else:
             raise ValueError(f"Unsupported field_or_set type, got {type(field_or_set)}")
@@ -300,19 +284,13 @@ class SchemaSet:
 
     def __hash__(self):
         """Hash by field.name."""
-        if self.field:
-            return hash(self.field)
-        else:
-            return hash(self.name)
+        return hash(self.name)
 
     def __eq__(self, o):
         """Equality."""
-        if self.field:
-            return self.field == o
-        else:
-            return self.name == o
+        return self.name == o
 
-    def __contains__(self, item: str | SchemaField) -> bool:
+    def __contains__(self, item: str | SchemaField | SchemaSet) -> bool:
         """Check if SchemaSet contains field or name.
 
         Args:
@@ -330,7 +308,7 @@ class SchemaSet:
         except ValueError:
             return item in self.members
 
-    def __getitem__(self, item: str | SchemaField) -> SchemaField | SchemaSet:
+    def __getitem__(self, item: str | SchemaField | SchemaSet) -> SchemaField | SchemaSet:
         """Get field item by SchemaField or name.
 
         Args:
@@ -346,7 +324,7 @@ class SchemaSet:
             int(str(item))
             raise FIXMessageError("item looks like tag, use name or SchemaField")
         except ValueError:
-            return self.members[item]
+            return self.members[item]  # type: ignore
 
 
 class SchemaGroup(SchemaSet):
@@ -363,8 +341,38 @@ class SchemaGroup(SchemaSet):
             field: SchemaField of group
             required: required flag
         """
-        super().__init__(field.name, field)
+        super().__init__(field.name)
+        self.field = field
+        if not (
+            ("No" in field.name or "Num" in field.name)
+            and field.ftype in ["NUMINGROUP", "INT"]
+        ):
+            # warnings.warn('')
+            raise ValueError(
+                "SchemaSet expected to have group field with NUMINGROUP|INT type,"
+                f" name contais No/Num, got {field}"
+            )
         self.field_required = required
+
+    def __hash__(self):
+        """Hash by field.name."""
+        return hash(self.field)
+
+    def __eq__(self, o):
+        """Equality."""
+        return self.field == o
+
+    @property
+    def tag(self) -> str:
+        """Tag number of SchemaField.
+
+        Returns:
+            tag
+
+        Raises:
+            ValueError: raised then tag is not single field
+        """
+        return self.field.tag
 
     def validate_group(self, groups: list[FIXContainer]):
         """Validate values of all tags in group.
@@ -501,7 +509,7 @@ class FIXSchema:
         self._components: dict[str, SchemaComponent] = {}
         self._messages: dict[str, SchemaMessage] = {}
         self._messages_types: dict[str, SchemaMessage] = {}
-        self._types = set()
+        self._types: set[str] = set()
 
         self._parse(xml_or_path.getroot())
 
@@ -724,7 +732,7 @@ class FIXSchema:
                     raise FIXMessageError(
                         f"msg tag={tag} val={val} must be a tag, got group"
                     )
-                fschema.validate_value(val)
+                fschema.validate_value(val)  # type: ignore
 
             elif isinstance(fschema, SchemaGroup):
                 if not msg.is_group(tag):
