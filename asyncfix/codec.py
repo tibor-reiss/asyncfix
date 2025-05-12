@@ -1,7 +1,7 @@
 """FIX Message encoding / decoding module."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from asyncfix import FMsg, FTag
 from asyncfix.errors import EncodingError, InvalidTagError
@@ -13,7 +13,11 @@ MINIMUM_MSG_LENGTH = 3
 TOKENS_LENGTH = 2
 
 
-def _split_tag(tag: str, silent: bool = True, custom_error: str = "") -> tuple[str, str]:
+def _split_tag(
+    tag: str,
+    silent: bool = True,
+    custom_error: str = "",
+) -> tuple[str, str]:
     tokens = tag.split("=", 1)
     if len(tokens) != TOKENS_LENGTH:
         if custom_error:
@@ -59,7 +63,7 @@ class Codec:
     @staticmethod
     def current_datetime() -> str:
         """FIX complaint date-time string (UTC now)."""
-        return datetime.now(UTC).strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
+        return datetime.now(timezone.utc).strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
 
     def _add_tag(self, body: list[str], t: str, msg: FIXContainer) -> None:
         if msg.is_group(t):

@@ -486,7 +486,7 @@ class AsyncFIXConnection:
 
         Raises:
             FIXMessageError if critical error - no LOGOUT message has to be sent
-            FIXMessageError(err_msg) otherwise - LOGOUT message with 58=err_msg should be sent
+            FIXMessageError(err_msg) else - LOGOUT message with 58=err_msg should be sent
         """
         if msg[FTag.BeginString] != self.protocol.beginstring:
             raise FIXMessageError(
@@ -516,7 +516,7 @@ class AsyncFIXConnection:
                 _is_err = False
 
             if _is_err:
-                raise FIXMessageError (
+                raise FIXMessageError(
                     f"MsgSeqNum is too low, expected {self._session.next_num_in}, got"
                     f" {msg_seq_num}"
                 )
