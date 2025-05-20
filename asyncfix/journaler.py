@@ -110,7 +110,7 @@ class Journaler:
             i_end = msg.index(b"\x01", i_start + 1)
             return int(msg[i_start + 4 : i_end])
         except Exception:
-            raise FIXMessageError(f"tag 34 is not found or invalid, in message: {msg}")
+            raise FIXMessageError(f"tag 34 is not found or invalid, in message: {msg.decode(encoding='utf-8')}")
 
     def set_seq_num(
         self,
@@ -196,7 +196,7 @@ class Journaler:
         session: FIXSession,
         direction: MessageDirection,
         seq_no: int,
-    ) -> bytes:
+    ) -> bytes | None:
         """Loads specific message from DB by seq no.
 
         Args:
